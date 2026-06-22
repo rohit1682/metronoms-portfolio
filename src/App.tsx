@@ -10,14 +10,8 @@ import ScrollProgressBar from './components/ui/ScrollProgressBar';
 import BookingCTA from './components/ui/BookingCTA';
 import ScrollToTop from './components/ui/ScrollToTop';
 
-// Sections
-import Hero from './components/sections/Hero';
-import About from './components/sections/About';
-import MemberStrip from './components/sections/MemberStrip';
-import Experience from './components/sections/Experience';
-import Contact from './components/sections/Contact';
-
 // Pages
+import HomePage from './pages/HomePage';
 import StoryPage from './pages/StoryPage';
 import MembersPage from './pages/MembersPage';
 import HighlightsPage from './pages/HighlightsPage';
@@ -36,25 +30,12 @@ function PageWrapper({ children }: Readonly<{ children: React.ReactNode }>) {
   );
 }
 
-// Home = all sections scrolled together
-function HomePage() {
-  return (
-    <PageWrapper>
-      <Hero />
-      <About />
-      <MemberStrip />
-      <Experience />
-      <Contact />
-    </PageWrapper>
-  );
-}
-
 function AnimatedRoutes() {
   const location = useLocation();
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<PageWrapper><HomePage /></PageWrapper>} />
         <Route path="/story" element={<PageWrapper><StoryPage /></PageWrapper>} />
         <Route path="/members" element={<PageWrapper><MembersPage /></PageWrapper>} />
         <Route path="/highlights" element={<PageWrapper><HighlightsPage /></PageWrapper>} />

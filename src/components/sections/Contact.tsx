@@ -12,7 +12,7 @@ function ContactForm() {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<{ email?: string; message?: string }>({});
-  const [sent, setSent] = useState(false);
+  const [mailtoUrl, setMailtoUrl] = useState('');
 
   const validate = () => {
     const errs: typeof errors = {};
@@ -27,8 +27,7 @@ function ContactForm() {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     const body = encodeURIComponent(`From: ${email.trim()}\n\n${message.trim()}`);
-    window.location.href = `mailto:${BAND_EMAIL}?subject=Booking%20Enquiry&body=${body}`;
-    setSent(true);
+    setMailtoUrl(`mailto:${BAND_EMAIL}?subject=Booking%20Enquiry&body=${body}`);
   };
 
   const inputStyle: React.CSSProperties = {
@@ -65,7 +64,8 @@ function ContactForm() {
     textAlign: 'left',
   };
 
-  if (sent) {
+  // After the form is submitted — show a ready-to-click mailto link (works on all platforms)
+  if (mailtoUrl) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -82,27 +82,67 @@ function ContactForm() {
       >
         <div style={{
           fontFamily: 'var(--font-display)',
-          fontSize: 'clamp(1.1rem, 3vw, 1.4rem)',
+          fontSize: 'clamp(1rem, 3vw, 1.3rem)',
           letterSpacing: '0.1em',
           color: 'var(--white)',
-          marginBottom: '8px',
+          marginBottom: '16px',
         }}>
-          Your mail client is opening…
+          Message ready — send it now
         </div>
+
+        {/* Primary CTA — works on desktop & mobile */}
+        <a
+          href={mailtoUrl}
+          style={{
+            display: 'inline-block',
+            padding: '13px 36px',
+            background: 'linear-gradient(135deg, var(--dark-red), var(--crimson))',
+            borderRadius: '2px',
+            color: '#fff',
+            fontFamily: 'var(--font-body)',
+            fontSize: '0.78rem',
+            fontWeight: 600,
+            letterSpacing: '0.2em',
+            textTransform: 'uppercase',
+            textDecoration: 'none',
+            boxShadow: '0 4px 20px rgba(196,30,58,0.35)',
+            marginBottom: '16px',
+          }}
+        >
+          Open in Email App →
+        </a>
+
         <p style={{
           fontFamily: 'var(--font-body)',
-          fontSize: '0.82rem',
+          fontSize: '0.78rem',
           color: 'var(--white-muted)',
           letterSpacing: '0.04em',
+          marginTop: '8px',
         }}>
-          If nothing opens, write to us directly at{' '}
+          No email app? Write to us directly:{' '}
           <a
             href={`mailto:${BAND_EMAIL}`}
-            style={{ color: 'var(--crimson)', textDecoration: 'none' }}
+            style={{ color: 'var(--crimson)', textDecoration: 'none', fontWeight: 600 }}
           >
             {BAND_EMAIL}
           </a>
         </p>
+
+        <button
+          onClick={() => setMailtoUrl('')}
+          style={{
+            marginTop: '16px',
+            background: 'none',
+            border: 'none',
+            color: 'var(--white-muted)',
+            fontSize: '0.7rem',
+            letterSpacing: '0.1em',
+            cursor: 'pointer',
+            textTransform: 'uppercase',
+          }}
+        >
+          ← Edit message
+        </button>
       </motion.div>
     );
   }
@@ -205,8 +245,9 @@ function ContactForm() {
         letterSpacing: '0.04em',
         marginTop: '-8px',
       }}>
-        This will open your mail client addressed to{' '}
+        Prepares an email to{' '}
         <span style={{ color: 'var(--white-dim)' }}>{BAND_EMAIL}</span>
+        {' '}— you'll click to send from your email app
       </p>
     </motion.form>
   );
@@ -421,18 +462,6 @@ export default function Contact() {
             </div>
           </motion.div>
 
-          {/* Primary contact */}
-          <motion.div
-            variants={itemVariants}
-            style={{
-              marginTop: '32px',
-              fontSize: '0.72rem',
-              color: 'var(--white-muted)',
-              letterSpacing: '0.08em',
-            }}
-          >
-            Primary contact: <span style={{ color: 'var(--white-dim)' }}>{CONTACT.primaryContact}</span>
-          </motion.div>
         </motion.div>
       </div>
     </section>
