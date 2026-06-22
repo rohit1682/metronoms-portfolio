@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-// @ts-ignore — Vite resolves .wav assets as URLs
-import track from '../assets/OC/SADDHO NEI AMAR MASTER.wav';
+// @ts-ignore — Vite resolves audio assets as URLs
+import track from '../assets/OC/SADDHO NEI AMAR MASTER.mp3';
 
 export default function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
