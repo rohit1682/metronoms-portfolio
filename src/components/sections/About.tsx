@@ -1,15 +1,18 @@
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { EASE_SMOOTH } from '../../utils/easing';
 import { useInView } from 'react-intersection-observer';
 import { ABOUT } from '../../constants';
 import { ABOUT_UI } from '../../constants/ui';
-import { ABOUT_PHOTO, GROUP_PHOTOS } from '../../constants/images';
+import { GROUP_PHOTOS } from '../../constants/images';
+import { randomItem } from '../../utils/random';
 
 export default function About() {
   const { ref: sectionRef, inView } = useInView({ threshold: 0.1, triggerOnce: true });
   const { ref: photoRef, inView: photoInView } = useInView({ threshold: 0.2, triggerOnce: true });
 
-  const photo = ABOUT_PHOTO || GROUP_PHOTOS[1] || GROUP_PHOTOS[0];
+  // Fresh random group photo on every page mount
+  const photo = useMemo(() => randomItem(GROUP_PHOTOS) ?? GROUP_PHOTOS[0] ?? '', []);
 
   const containerVariants = {
     hidden: {},
@@ -27,6 +30,7 @@ export default function About() {
       style={{
         padding: 'clamp(60px, 10vw, 120px) clamp(20px, 5vw, 60px)',
         background: 'linear-gradient(180deg, #0a0a0a 0%, #0d0d0d 100%)',
+        borderTop: '1px solid rgba(139,0,0,0.12)',
         position: 'relative',
         overflow: 'hidden',
       }}

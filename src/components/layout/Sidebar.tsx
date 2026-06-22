@@ -8,8 +8,8 @@ import {
   RiGroupLine,
   RiGalleryLine,
 } from 'react-icons/ri';
-import { NAV_ROUTES, BRAND } from '../constants';
-import logo from '../assets/logo/logo.jpeg';
+import { NAV_ROUTES, BRAND } from '../../constants';
+import logo from '../../assets/logo/logo.jpeg';
 
 interface SidebarProps {
   onToggle?: (open: boolean) => void;

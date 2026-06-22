@@ -60,9 +60,27 @@ export const MEMBER_PHOTOS: Record<string, string[]> = {
   ANISH: toUrls(anishRaw),
 };
 
-// First photo per member (used in Members section cards)
+// ── Per-context member photos — each surface uses a different index ───────────
+
+/** MemberStrip on home page → first available photo */
 export const MEMBER_HERO_PHOTO: Record<string, string> = Object.fromEntries(
   Object.entries(MEMBER_PHOTOS).map(([name, photos]) => [name, photos[0] ?? ''])
+);
+
+/** MembersPage (/members) → second photo when available, otherwise first */
+export const MEMBER_CARD_PHOTO: Record<string, string> = Object.fromEntries(
+  Object.entries(MEMBER_PHOTOS).map(([name, photos]) => [
+    name,
+    photos[1] ?? photos[0] ?? '',
+  ])
+);
+
+/** StoryPage featured-member panel → third photo when available, fallback chain */
+export const MEMBER_STORY_PHOTO: Record<string, string> = Object.fromEntries(
+  Object.entries(MEMBER_PHOTOS).map(([name, photos]) => [
+    name,
+    photos[2] ?? photos[1] ?? photos[0] ?? '',
+  ])
 );
 
 // All photos flat (used in Gallery — Group photos first, then per-member)

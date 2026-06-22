@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { ALL_PHOTOS, GALLERY_CATEGORIES } from '../../constants/images';
 import { GALLERY_UI } from '../../constants/ui';
+import { shuffled } from '../../utils/random';
 
 // ── Lightbox ────────────────────────────────────────────────────────────────
 function Lightbox({
@@ -219,9 +220,12 @@ export default function Gallery() {
 
   const { ref: headRef, inView: headInView } = useInView({ threshold: 0.2, triggerOnce: true });
 
+  // Shuffle order fresh on every page mount so the grid looks different each visit
+  const shuffledPhotos = useMemo(() => shuffled(ALL_PHOTOS), []);
+
   const filtered = activeFilter === 'All'
-    ? ALL_PHOTOS
-    : ALL_PHOTOS.filter((p) => p.category === activeFilter);
+    ? shuffledPhotos
+    : shuffledPhotos.filter((p) => p.category === activeFilter);
 
   const openLightbox = useCallback((index: number) => setLightboxIndex(index), []);
   const closeLightbox = useCallback(() => setLightboxIndex(null), []);
@@ -316,7 +320,7 @@ export default function Gallery() {
               {cat}
               {cat !== 'All' && (
                 <span style={{ marginLeft: '6px', opacity: 0.5, fontSize: '0.65rem' }}>
-                  {ALL_PHOTOS.filter((p) => p.category === cat).length}
+                  {shuffledPhotos.filter((p) => p.category === cat).length}
                 </span>
               )}
             </motion.button>

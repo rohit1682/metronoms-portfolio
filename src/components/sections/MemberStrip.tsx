@@ -1,20 +1,33 @@
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { MEMBERS } from '../../constants';
-import { MEMBER_HERO_PHOTO } from '../../constants/images';
+import { MEMBER_PHOTOS } from '../../constants/images';
 import { MEMBERS_UI } from '../../constants/ui';
+import { randomItem } from '../../utils/random';
 
 const MEMBER_COUNT = MEMBERS.list.length; // 7
 
 export default function MemberStrip() {
   const { ref, inView } = useInView({ threshold: 0.08, triggerOnce: true });
 
+  // Pick a random photo per member on every mount (fresh every navigation + reload)
+  const randomPhotos = useMemo(() =>
+    Object.fromEntries(
+      MEMBERS.list.map(m => {
+        const photos = MEMBER_PHOTOS[m.name] ?? [];
+        return [m.name, randomItem(photos) ?? ''];
+      })
+    ), []
+  );
+
   return (
     <section
       style={{
         padding: 'clamp(48px, 8vw, 80px) clamp(16px, 4vw, 48px)',
         background: 'linear-gradient(180deg, #0d0d0d 0%, #0a0a0a 100%)',
+        borderTop: '1px solid rgba(139,0,0,0.12)',
         position: 'relative',
       }}
     >
@@ -105,7 +118,7 @@ export default function MemberStrip() {
       */}
       <div className="member-strip-grid">
         {MEMBERS.list.map((member, i) => {
-          const photo = MEMBER_HERO_PHOTO[member.name];
+          const photo = randomPhotos[member.name];
           return (
             <motion.div
               key={member.name}

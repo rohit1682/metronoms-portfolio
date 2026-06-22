@@ -1,10 +1,220 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { CONTACT, BRAND, CLOSING } from '../../constants';
 import { CONTACT_UI } from '../../constants/ui';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BAND_EMAIL = 'metronorms23@gmail.com';
+
+// ── Contact form (mailto) ─────────────────────────────────────────────────────
+function ContactForm() {
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [errors, setErrors] = useState<{ email?: string; message?: string }>({});
+  const [sent, setSent] = useState(false);
+
+  const validate = () => {
+    const errs: typeof errors = {};
+    if (!email.trim()) errs.email = 'Your email is required';
+    else if (!EMAIL_RE.test(email.trim())) errs.email = 'Enter a valid email address';
+    if (!message.trim()) errs.message = 'Message is required';
+    return errs;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    const body = encodeURIComponent(`From: ${email.trim()}\n\n${message.trim()}`);
+    window.location.href = `mailto:${BAND_EMAIL}?subject=Booking%20Enquiry&body=${body}`;
+    setSent(true);
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '14px 16px',
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(139,0,0,0.35)',
+    borderRadius: '3px',
+    color: 'var(--white)',
+    fontFamily: 'var(--font-body)',
+    fontSize: '0.88rem',
+    letterSpacing: '0.03em',
+    outline: 'none',
+    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+  };
+
+  const errorStyle: React.CSSProperties = {
+    color: 'var(--crimson)',
+    fontSize: '0.72rem',
+    letterSpacing: '0.05em',
+    marginTop: '5px',
+    textAlign: 'left',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontFamily: 'var(--font-body)',
+    fontSize: '0.65rem',
+    letterSpacing: '0.22em',
+    textTransform: 'uppercase',
+    color: 'var(--white-muted)',
+    marginBottom: '7px',
+    textAlign: 'left',
+  };
+
+  if (sent) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+        style={{
+          padding: '28px 24px',
+          background: 'rgba(139,0,0,0.1)',
+          border: '1px solid rgba(196,30,58,0.4)',
+          borderRadius: '4px',
+          textAlign: 'center',
+          marginBottom: '40px',
+        }}
+      >
+        <div style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: 'clamp(1.1rem, 3vw, 1.4rem)',
+          letterSpacing: '0.1em',
+          color: 'var(--white)',
+          marginBottom: '8px',
+        }}>
+          Your mail client is opening…
+        </div>
+        <p style={{
+          fontFamily: 'var(--font-body)',
+          fontSize: '0.82rem',
+          color: 'var(--white-muted)',
+          letterSpacing: '0.04em',
+        }}>
+          If nothing opens, write to us directly at{' '}
+          <a
+            href={`mailto:${BAND_EMAIL}`}
+            style={{ color: 'var(--crimson)', textDecoration: 'none' }}
+          >
+            {BAND_EMAIL}
+          </a>
+        </p>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.form
+      onSubmit={handleSubmit}
+      noValidate
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.1 }}
+      style={{
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px',
+        marginBottom: '40px',
+        textAlign: 'left',
+      }}
+    >
+      {/* Email field */}
+      <div>
+        <label htmlFor="sender-email" style={labelStyle}>Your Email *</label>
+        <input
+          id="sender-email"
+          type="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setErrors(prev => ({ ...prev, email: undefined })); }}
+          placeholder="you@example.com"
+          style={{
+            ...inputStyle,
+            borderColor: errors.email ? 'var(--crimson)' : 'rgba(139,0,0,0.35)',
+          }}
+          onFocus={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(196,30,58,0.75)';
+            (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 2px rgba(196,30,58,0.18)';
+          }}
+          onBlur={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = errors.email ? 'var(--crimson)' : 'rgba(139,0,0,0.35)';
+            (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+          }}
+        />
+        {errors.email && <p style={errorStyle}>{errors.email}</p>}
+      </div>
+
+      {/* Message field */}
+      <div>
+        <label htmlFor="sender-message" style={labelStyle}>Message *</label>
+        <textarea
+          id="sender-message"
+          value={message}
+          onChange={(e) => { setMessage(e.target.value); setErrors(prev => ({ ...prev, message: undefined })); }}
+          placeholder="Tell us about your event, date, venue, and any special requirements…"
+          rows={5}
+          style={{
+            ...inputStyle,
+            resize: 'vertical',
+            minHeight: '100px',
+            borderColor: errors.message ? 'var(--crimson)' : 'rgba(139,0,0,0.35)',
+          }}
+          onFocus={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = 'rgba(196,30,58,0.75)';
+            (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 2px rgba(196,30,58,0.18)';
+          }}
+          onBlur={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor = errors.message ? 'var(--crimson)' : 'rgba(139,0,0,0.35)';
+            (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+          }}
+        />
+        {errors.message && <p style={errorStyle}>{errors.message}</p>}
+      </div>
+
+      {/* Submit */}
+      <motion.button
+        type="submit"
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
+        style={{
+          alignSelf: 'flex-start',
+          padding: '13px 36px',
+          background: 'linear-gradient(135deg, var(--dark-red), var(--crimson))',
+          border: 'none',
+          borderRadius: '2px',
+          color: '#fff',
+          fontFamily: 'var(--font-body)',
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          letterSpacing: '0.2em',
+          textTransform: 'uppercase',
+          cursor: 'pointer',
+          boxShadow: '0 4px 20px rgba(196,30,58,0.35)',
+        }}
+      >
+        Send Message →
+      </motion.button>
+
+      <p style={{
+        fontSize: '0.68rem',
+        color: 'var(--white-muted)',
+        letterSpacing: '0.04em',
+        marginTop: '-8px',
+      }}>
+        This will open your mail client addressed to{' '}
+        <span style={{ color: 'var(--white-dim)' }}>{BAND_EMAIL}</span>
+      </p>
+    </motion.form>
+  );
+}
+
+// ── Main Contact section ──────────────────────────────────────────────────────
 export default function Contact() {
-  const { ref, inView } = useInView({ threshold: 0.2, triggerOnce: true });
+  const { ref, inView } = useInView({ threshold: 0.15, triggerOnce: true });
 
   const containerVariants = {
     hidden: {},
@@ -22,6 +232,7 @@ export default function Contact() {
       style={{
         padding: 'clamp(60px, 10vw, 120px) clamp(20px, 5vw, 60px)',
         background: 'linear-gradient(180deg, #0a0a0a 0%, #080808 100%)',
+        borderTop: '1px solid rgba(139,0,0,0.12)',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -38,7 +249,7 @@ export default function Contact() {
       }} />
 
       <div style={{
-        maxWidth: '800px',
+        maxWidth: '720px',
         margin: '0 auto',
         position: 'relative',
         zIndex: 1,
@@ -83,11 +294,16 @@ export default function Contact() {
               color: 'var(--white-dim)',
               lineHeight: 1.7,
               marginTop: '16px',
-              marginBottom: '48px',
+              marginBottom: '40px',
             }}
           >
             {CONTACT_UI.subheading}
           </motion.p>
+
+          {/* Email form */}
+          <motion.div variants={itemVariants}>
+            <ContactForm />
+          </motion.div>
 
           {/* Contact cards */}
           <motion.div
@@ -96,7 +312,7 @@ export default function Contact() {
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
               gap: '16px',
-              marginBottom: '40px',
+              marginBottom: '32px',
             }}
           >
             {CONTACT.phones.map((phone) => (
@@ -157,7 +373,7 @@ export default function Contact() {
               letterSpacing: '0.15em',
               textTransform: 'uppercase',
               transition: 'all 0.3s ease',
-              marginBottom: '56px',
+              marginBottom: '48px',
             }}
           >
             <span style={{ fontSize: '1rem' }}>◆</span>
@@ -205,7 +421,7 @@ export default function Contact() {
             </div>
           </motion.div>
 
-          {/* Primary contact name */}
+          {/* Primary contact */}
           <motion.div
             variants={itemVariants}
             style={{

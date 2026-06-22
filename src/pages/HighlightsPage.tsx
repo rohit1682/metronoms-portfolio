@@ -1,13 +1,12 @@
 /**
  * HighlightsPage — 3-phase cinematic animation → gallery.
  *
- * Performance principles:
- *  - ONLY animate transform (x, y, scale, rotate) and opacity — both GPU-composited.
- *  - NEVER animate width/height (causes layout reflow every frame).
- *  - Pulsing rings use CSS @keyframes (lower JS overhead than Framer Motion repeat).
- *  - Element counts kept low: 12 thumbnails, 28 particles.
- *  - willChange: 'transform, opacity' on every animated element.
- *  - Images pre-loaded before animation starts so no decode jank mid-flight.
+ * Performance architecture:
+ *  - ALL photo thumbnails use CSS @keyframes (compositor thread, zero JS/frame).
+ *    CSS custom properties --ox/--oy/--rot set per element as start position.
+ *  - Only the star core + explosion particles use Framer Motion.
+ *  - Thumbnails are preloaded before animation starts.
+ *  - Only transform/opacity animated — no layout-triggering properties.
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -20,8 +19,8 @@ type Phase = 'loading' | 'pulling' | 'exploding' | 'gallery';
 
 interface ThumbDef {
   id: number; src: string;
-  ox: number; oy: number;   // pixel offset from screen centre (start position)
-  rot: number; size: number; delay: number;
+  ox: number; oy: number; rot: number;
+  size: number; delay: number;
 }
 interface PartDef {
   id: number; tx: number; ty: number;
@@ -29,140 +28,178 @@ interface PartDef {
 }
 
 // ── tunables ──────────────────────────────────────────────────────────────────
-const PULL_MS  = 2600;
-const EXP_MS   = 1200;
-const N_THUMBS = 12;   // fewer = smoother on low-end devices
-const N_PARTS  = 28;
+const PULL_MS    = 2400;  // total pulling phase duration
+const EXP_MS     = 700;
+const N_PARTS    = 16;
+const N_THUMBS   = 12;   // keep low — each thumbnail = a GPU compositing layer
+const WARMUP_MS  = 350;  // let browser paint the stage before animations begin
+// Each thumb animation must finish WITHIN the pull phase:
+//   max_delay (0.5s) + ani_duration (1.5s) = 2.0s < PULL_MS (2.4s) ✓
+const THUMB_ANI_DUR = 1.5;  // seconds
+const THUMB_MAX_DELAY = 0.5; // seconds
+const THUMB_MIN_PX = 56;
+const THUMB_MAX_PX = 90;
 
-// Star base pixel size — scale transform does the rest (no width/height animation)
-const STAR_BASE   = 20;  // px — the "1x" size of the core orb
-const RING_BASE   = 24;  // px — shockwave rings start at this, scale up
+// ── Neutron-star palette ──────────────────────────────────────────────────────
+// Layered gradients give a pseudo-3D sphere appearance:
+//  1. off-centre specular hotspot (white)
+//  2. blue plasma body
+//  3. limb-darkening shadow (opposite side)
+const STAR_3D = [
+  'radial-gradient(circle at 38% 34%, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 28%)',
+  'radial-gradient(circle at 50% 50%, #e8f4ff 0%, #5aaaff 28%, #0d4aaa 60%, #000d1f 100%)',
+  'radial-gradient(circle at 64% 66%, rgba(0,6,18,0.75) 0%, transparent 50%)',
+].join(', ');
+
+const STAR_GLOW_PULL =
+  '0 0 0 2px rgba(100,180,255,0.25), ' +
+  '0 0 20px 6px rgba(100,180,255,0.55), ' +
+  '0 0 60px 20px rgba(60,120,255,0.3), ' +
+  '0 0 120px 50px rgba(30,80,200,0.15)';
+
+const STAR_GLOW_EXPLODE =
+  '0 0 0 3px rgba(255,255,255,0.6), ' +
+  '0 0 40px 16px rgba(120,200,255,0.9), ' +
+  '0 0 100px 40px rgba(80,160,255,0.6), ' +
+  '0 0 180px 80px rgba(200,30,58,0.35)';
 
 const PART_COLORS = [
-  '#ffffff', '#c8e6ff', '#6ab0ff', '#3a80ff',
+  '#ffffff', '#d0eaff', '#7ab8ff', '#3a7fff',
   '#FF1744', '#FF6B6B', '#FFD700', '#FF8C00',
 ];
+
+// ── CSS for thumbnails (compositor thread) ────────────────────────────────────
+// fill-mode: both → browser applies `from` keyframe BEFORE the delay fires,
+// so each thumbnail appears at its edge position immediately on mount.
+// No conflicting opacity: 0 rule — let the animation own opacity entirely.
+const THUMB_CSS = `
+  @keyframes flyInToStar {
+    from {
+      transform: translate(var(--ox), var(--oy)) rotate(var(--rot)) scale(1);
+      opacity: 0.9;
+    }
+    75% { opacity: 0.6; }
+    to {
+      transform: translate(0px, 0px) rotate(0deg) scale(0.05);
+      opacity: 0;
+    }
+  }
+  .star-thumb {
+    position: absolute;
+    top: 50%; left: 50%;
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid rgba(100,180,255,0.5);
+    box-shadow: 0 0 12px rgba(100,180,255,0.3);
+    background: rgba(8,24,55,0.7);
+    will-change: transform, opacity;
+    animation: flyInToStar var(--dur) ease-in both;
+    animation-delay: var(--delay);
+  }
+  .star-thumb img {
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+    filter: brightness(0.8) saturate(0.6);
+  }
+`;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function rnd(a: number, b: number) { return a + Math.random() * (b - a); }
 
 function edgePx(vw: number, vh: number, size: number) {
-  const mx = vw / 2 + size + 16;
-  const my = vh / 2 + size + 16;
+  const mx = vw / 2 + size + 10;
+  const my = vh / 2 + size + 10;
   const side = Math.floor(Math.random() * 4);
   switch (side) {
     case 0: return { ox: rnd(-mx, mx), oy: -my };
     case 1: return { ox: rnd(-mx, mx), oy:  my };
-    case 2: return { ox: -mx, oy: rnd(-my * 0.85, my * 0.85) };
-    default: return { ox:  mx, oy: rnd(-my * 0.85, my * 0.85) };
+    case 2: return { ox: -mx, oy: rnd(-my * 0.9, my * 0.9) };
+    default: return { ox:  mx, oy: rnd(-my * 0.9, my * 0.9) };
   }
 }
 
-async function preloadImages(srcs: string[]) {
-  return Promise.allSettled(
-    srcs.map(src => new Promise<void>((res) => {
-      const img = new Image();
-      img.onload = img.onerror = () => res();
-      img.src = src;
-    }))
-  );
-}
 
-// ── CSS for pulsing rings (cheaper than Framer Motion repeat) ─────────────────
-const PULSE_KEYFRAMES = `
-  @keyframes star-pulse {
-    0%, 100% { transform: scale(1); opacity: 0.65; }
-    50%       { transform: scale(1.5); opacity: 0.12; }
-  }
-`;
-
-// ── Neutron Star ──────────────────────────────────────────────────────────────
+// ── Star core ─────────────────────────────────────────────────────────────────
 function NeutronStar({ phase }: Readonly<{ phase: Phase }>) {
   const pulling   = phase === 'pulling';
   const exploding = phase === 'exploding';
 
   return (
-    <>
-      <style>{PULSE_KEYFRAMES}</style>
-      <div style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        pointerEvents: 'none', zIndex: 12,
-      }}>
-        {/* Pulsing rings — CSS animation, runs forever during pull */}
-        {pulling && [80, 140, 210].map((d, i) => (
-          <div
-            key={d}
-            style={{
-              position: 'absolute',
-              width: d, height: d,
-              borderRadius: '50%',
-              border: `1px solid rgba(100,180,255,${0.55 - i * 0.14})`,
-              boxShadow: `0 0 ${14 + i * 10}px rgba(100,180,255,${0.28 - i * 0.07})`,
-              animationName: 'star-pulse',
-              animationDuration: `${1.2 + i * 0.25}s`,
-              animationTimingFunction: 'ease-in-out',
-              animationIterationCount: 'infinite',
-              animationDelay: `${i * 0.28}s`,
-              willChange: 'transform, opacity',
-            }}
-          />
-        ))}
+    <div style={{
+      position: 'absolute', inset: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      pointerEvents: 'none', zIndex: 12,
+    }}>
+      {/* CSS-animated pulse rings */}
+      {pulling && [70, 120, 185].map((d, i) => (
+        <div key={d} style={{
+          position: 'absolute',
+          width: d, height: d, borderRadius: '50%',
+          border: `1px solid rgba(100,180,255,${0.55 - i * 0.14})`,
+          boxShadow: `0 0 ${12 + i * 8}px rgba(100,180,255,${0.28 - i * 0.07})`,
+          animationName: 'star-ring-pulse',
+          animationDuration: `${1.1 + i * 0.28}s`,
+          animationTimingFunction: 'ease-in-out',
+          animationIterationCount: 'infinite',
+          animationDelay: `${i * 0.25}s`,
+          willChange: 'transform, opacity',
+        }} />
+      ))}
 
-        {/* Core orb — scale-only animation (no width/height change) */}
-        <motion.div
-          style={{
-            position: 'absolute',
-            width:  STAR_BASE,
-            height: STAR_BASE,
-            borderRadius: '50%',
-            background: exploding
-              ? 'radial-gradient(circle, #fff 0%, #b0d8ff 30%, #5599ff 55%, #8B0000 100%)'
-              : 'radial-gradient(circle, #fff 0%, #c8e6ff 35%, #6ab0ff 65%, #1a56b0 100%)',
-            boxShadow: exploding
-              ? '0 0 60px 20px rgba(80,160,255,0.85), 0 0 140px 50px rgba(196,30,58,0.45)'
-              : '0 0 30px 10px rgba(100,180,255,0.65), 0 0 70px 22px rgba(60,120,255,0.3)',
-            willChange: 'transform, opacity',
-          }}
-          animate={
-            pulling
-              ? { scale: [0.7, 1.3, 0.7], opacity: [1, 0.8, 1] }
-              : exploding
-              ? { scale: [1, 9, 0],       opacity: [1, 1,   0] }
-              : { scale: 0, opacity: 0 }
-          }
-          transition={
-            pulling
-              ? { duration: 1.1, repeat: Infinity, ease: 'easeInOut' }
-              : { duration: EXP_MS / 1000 * 0.85, ease: [0.1, 0, 0.7, 1] }
-          }
-        />
-      </div>
-    </>
+      {/* 3D core orb — scale only (no layout cost) */}
+      <motion.div
+        style={{
+          position: 'absolute',
+          width: 22, height: 22,
+          borderRadius: '50%',
+          background: STAR_3D,
+          boxShadow: exploding ? STAR_GLOW_EXPLODE : STAR_GLOW_PULL,
+          willChange: 'transform, opacity',
+        }}
+        animate={
+          pulling
+            ? { scale: [0.75, 1.4, 0.75], opacity: [1, 0.85, 1] }
+            : exploding
+            ? { scale: [1, 9, 0],         opacity: [1, 1,    0] }
+            : { scale: 0, opacity: 0 }
+        }
+        transition={
+          pulling
+            ? { duration: 1.05, repeat: Infinity, ease: 'easeInOut' }
+            : { duration: EXP_MS / 1000 * 0.82, ease: [0.1, 0, 0.65, 1] }
+        }
+      />
+
+      {/* CSS ring-pulse keyframe */}
+      <style>{`
+        @keyframes star-ring-pulse {
+          0%, 100% { transform: scale(1); opacity: 0.65; }
+          50%       { transform: scale(1.5); opacity: 0.1; }
+        }
+      `}</style>
+    </div>
   );
 }
 
-// ── Shockwave + Particles ─────────────────────────────────────────────────────
+// ── Explosion ─────────────────────────────────────────────────────────────────
 function Explosion() {
-  // Particles computed once
   const parts = useMemo<PartDef[]>(() =>
     Array.from({ length: N_PARTS }, (_, i) => {
-      const angle = (360 / N_PARTS) * i + rnd(-6, 6);
-      const dist  = rnd(90, 340);
+      const angle = (360 / N_PARTS) * i + rnd(-5, 5);
+      const dist  = rnd(80, 360);
       const rad   = (angle * Math.PI) / 180;
       return {
-        id:    i,
-        tx:    Math.cos(rad) * dist,
-        ty:    Math.sin(rad) * dist,
-        size:  rnd(4, 11),
+        id: i,
+        tx: Math.cos(rad) * dist,
+        ty: Math.sin(rad) * dist,
+        size: rnd(3, 11),
         color: PART_COLORS[Math.floor(Math.random() * PART_COLORS.length)],
         delay: rnd(0, 0.06),
       };
     }), []
   );
 
-  // Scale-only shockwave: start tiny, scale to fill screen
-  const ringTargetScale = Math.round(window.innerWidth * 1.8 / RING_BASE);
+  const ringScale = Math.round(Math.max(window.innerWidth, window.innerHeight) * 2.2 / 20);
 
   return (
     <div style={{
@@ -170,46 +207,39 @@ function Explosion() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       pointerEvents: 'none', zIndex: 11,
     }}>
-      {/* Shockwave ring 1 */}
+      {/* Scale-only shockwave rings */}
       <motion.div
         initial={{ scale: 0.5, opacity: 1 }}
-        animate={{ scale: ringTargetScale, opacity: 0 }}
-        transition={{ duration: 0.95, ease: 'easeOut' }}
+        animate={{ scale: ringScale, opacity: 0 }}
+        transition={{ duration: 0.55, ease: 'easeOut' }}
         style={{
-          position: 'absolute',
-          width:  RING_BASE, height: RING_BASE,
-          borderRadius: '50%',
-          border: '3px solid rgba(100,180,255,0.9)',
-          boxShadow: '0 0 40px rgba(100,180,255,0.6), 0 0 80px rgba(255,23,68,0.35)',
+          position: 'absolute', width: 20, height: 20, borderRadius: '50%',
+          border: '3px solid rgba(100,180,255,0.95)',
+          boxShadow: '0 0 30px rgba(100,180,255,0.7), 0 0 60px rgba(255,23,68,0.3)',
           willChange: 'transform, opacity',
         }}
       />
-      {/* Shockwave ring 2 */}
       <motion.div
         initial={{ scale: 0.3, opacity: 0.7 }}
-        animate={{ scale: ringTargetScale * 1.35, opacity: 0 }}
-        transition={{ duration: 1.05, delay: 0.08, ease: 'easeOut' }}
+        animate={{ scale: ringScale * 1.4, opacity: 0 }}
+        transition={{ duration: 0.6, delay: 0.06, ease: 'easeOut' }}
         style={{
-          position: 'absolute',
-          width:  RING_BASE, height: RING_BASE,
-          borderRadius: '50%',
+          position: 'absolute', width: 20, height: 20, borderRadius: '50%',
           border: '1px solid rgba(196,30,58,0.6)',
           willChange: 'transform, opacity',
         }}
       />
 
-      {/* Particles — translate only, no layout cost */}
+      {/* Particles */}
       {parts.map((p) => (
         <motion.div
           key={p.id}
           initial={{ x: 0, y: 0, scale: 1, opacity: 1 }}
           animate={{ x: p.tx, y: p.ty, scale: 0, opacity: 0 }}
-          transition={{ duration: rnd(0.65, 0.95), delay: p.delay, ease: 'easeOut' }}
+          transition={{ duration: rnd(0.5, 0.8), delay: p.delay, ease: 'easeOut' }}
           style={{
             position: 'absolute',
-            width:  p.size,
-            height: p.size,
-            borderRadius: '50%',
+            width: p.size, height: p.size, borderRadius: '50%',
             background: p.color,
             boxShadow: `0 0 8px ${p.color}`,
             willChange: 'transform, opacity',
@@ -225,7 +255,9 @@ export default function HighlightsPage() {
   const [phase, setPhase] = useState<Phase>('loading');
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Generate thumbnail data once (stable across renders)
+  // N_THUMBS thumbnails, each guaranteed to finish its animation BEFORE PULL_MS:
+  //   delay ≤ THUMB_MAX_DELAY, duration = THUMB_ANI_DUR
+  //   → max finish = THUMB_MAX_DELAY + THUMB_ANI_DUR = 2.0s < PULL_MS (2.4s) ✓
   const thumbs = useMemo<ThumbDef[]>(() => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -233,63 +265,65 @@ export default function HighlightsPage() {
       .sort(() => Math.random() - 0.5)
       .slice(0, N_THUMBS)
       .map((p, i) => {
-        const size = Math.round(rnd(72, 128));
+        const size = Math.round(rnd(THUMB_MIN_PX, THUMB_MAX_PX));
         const { ox, oy } = edgePx(vw, vh, size);
-        return { id: i, src: p.src, ox, oy, rot: rnd(-40, 40), size, delay: rnd(0, 0.4) };
+        const delay = rnd(0, THUMB_MAX_DELAY);
+        return { id: i, src: p.src, ox, oy, rot: rnd(-38, 38), size, delay };
       });
   }, []);
 
-  // Preload images then kick off animation
   useEffect(() => {
-    preloadImages(thumbs.map(t => t.src)).then(() => {
+    // Short warmup — lets the browser paint the stage div before animations fire.
+    // No blocking preload: dark placeholder is visible while images decode.
+    const warm = setTimeout(() => {
       setPhase('pulling');
       const t1 = setTimeout(() => {
         setPhase('exploding');
-        const t2 = setTimeout(() => setPhase('gallery'), EXP_MS + 300);
+        const t2 = setTimeout(() => setPhase('gallery'), EXP_MS + 250);
         timers.current.push(t2);
       }, PULL_MS);
       timers.current.push(t1);
-    });
+    }, WARMUP_MS);
+    timers.current.push(warm);
     return () => timers.current.forEach(clearTimeout);
   }, [thumbs]);
 
-  const skip = () => {
-    timers.current.forEach(clearTimeout);
-    setPhase('gallery');
-  };
+  const skip = () => { timers.current.forEach(clearTimeout); setPhase('gallery'); };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  const thumbDur = `${THUMB_ANI_DUR}s`;
+
   return (
     <div style={{ background: '#000', minHeight: '100vh' }}>
+      {/* CSS keyframes for thumbnails — one tag, not per-element */}
+      <style>{THUMB_CSS}</style>
+
       <AnimatePresence mode="wait">
 
-        {/* Loading spinner — shown while images preload */}
+        {/* Loading spinner */}
         {phase === 'loading' && (
           <motion.div
             key="loader"
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
             style={{
-              position: 'fixed', inset: 0,
+              position: 'fixed', inset: 0, zIndex: 50,
               display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center',
-              background: '#000', zIndex: 50,
+              background: '#000',
             }}
           >
             <motion.div
-              animate={{ scale: [0.8, 1.3, 0.8], opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+              animate={{ scale: [0.8, 1.4, 0.8], opacity: [0.6, 1, 0.6] }}
+              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
               style={{
                 width: 18, height: 18, borderRadius: '50%',
-                background: 'radial-gradient(circle, #fff 0%, #6ab0ff 60%, #1a56b0 100%)',
-                boxShadow: '0 0 24px 8px rgba(100,180,255,0.6)',
+                background: STAR_3D, boxShadow: STAR_GLOW_PULL,
                 willChange: 'transform, opacity',
               }}
             />
             <div style={{
-              marginTop: 20,
-              fontFamily: 'var(--font-body)',
-              fontSize: '0.65rem', letterSpacing: '0.3em',
+              marginTop: 18, fontFamily: 'var(--font-body)',
+              fontSize: '0.62rem', letterSpacing: '0.3em',
               textTransform: 'uppercase', color: '#6ab0ff',
             }}>
               Preparing…
@@ -297,15 +331,14 @@ export default function HighlightsPage() {
           </motion.div>
         )}
 
-        {/* Animation stage — pulling + exploding */}
+        {/* Animation stage */}
         {(phase === 'pulling' || phase === 'exploding') && (
           <motion.div
             key="stage"
-            exit={{ opacity: 0, transition: { duration: 0.6 } }}
+            exit={{ opacity: 0, transition: { duration: 0.55 } }}
             style={{
-              position: 'fixed', inset: 0,
-              background: 'radial-gradient(ellipse at center, #060a12 0%, #000 70%)',
-              zIndex: 50,
+              position: 'fixed', inset: 0, zIndex: 50,
+              background: 'radial-gradient(ellipse at center, #04080f 0%, #000 70%)',
             }}
           >
             {/* Title */}
@@ -316,12 +349,11 @@ export default function HighlightsPage() {
                   initial={{ opacity: 0, y: -14 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, transition: { duration: 0.2 } }}
-                  transition={{ delay: 0.25, duration: 0.55 }}
+                  transition={{ delay: 0.2, duration: 0.5 }}
                   style={{
                     position: 'absolute',
-                    top: 'clamp(48px, 9vh, 88px)',
-                    left: 0, right: 0,
-                    textAlign: 'center',
+                    top: 'clamp(44px, 9vh, 84px)',
+                    left: 0, right: 0, textAlign: 'center',
                     zIndex: 20, pointerEvents: 'none',
                   }}
                 >
@@ -330,16 +362,15 @@ export default function HighlightsPage() {
                     fontSize: 'clamp(2rem, 6vw, 4.5rem)',
                     letterSpacing: '0.12em', textTransform: 'uppercase',
                     color: '#fff', margin: 0, lineHeight: 1,
-                    textShadow: '0 0 50px rgba(100,180,255,0.35)',
+                    textShadow: '0 0 60px rgba(100,180,255,0.4)',
                   }}>
                     Our Highlights
                   </h1>
                   <motion.p
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.8, repeat: Infinity }}
+                    animate={{ opacity: [0.25, 1, 0.25] }}
+                    transition={{ duration: 1.7, repeat: Infinity }}
                     style={{
-                      marginTop: 10,
-                      fontFamily: 'var(--font-body)',
+                      marginTop: 10, fontFamily: 'var(--font-body)',
                       fontSize: '0.68rem', letterSpacing: '0.32em',
                       textTransform: 'uppercase', color: '#6ab0ff',
                     }}
@@ -350,49 +381,27 @@ export default function HighlightsPage() {
               )}
             </AnimatePresence>
 
-            {/* Thumbnails
-                - Centred via top/left 50% + negative margin (so FM x/y offset from centre)
-                - Only scale + translate + rotate — all composited, zero reflow            */}
+            {/* Thumbnails — present for the entire animation stage.
+                Each animation finishes (opacity→0) before PULL_MS elapses,
+                so they are already invisible when the explosion fires. */}
             {thumbs.map((t) => (
-              <motion.div
+              <div
                 key={t.id}
-                initial={{ x: t.ox, y: t.oy, rotate: t.rot, scale: 1, opacity: 0.95 }}
-                animate={
-                  phase === 'pulling'
-                    ? { x: 0, y: 0, rotate: 0, scale: 0.05, opacity: 0.9 }
-                    : { x: 0, y: 0, rotate: 0, scale: 0,    opacity: 0   }
-                }
-                transition={{
-                  duration: phase === 'pulling' ? (PULL_MS / 1000) - t.delay : 0.2,
-                  delay: phase === 'pulling' ? t.delay : 0,
-                  ease: [0.2, 0, 0.85, 1],
-                }}
+                className="star-thumb"
                 style={{
-                  position: 'absolute',
-                  top: '50%', left: '50%',
-                  marginTop:  -(t.size / 2),
+                  '--ox': `${t.ox}px`,
+                  '--oy': `${t.oy}px`,
+                  '--rot': `${t.rot}deg`,
+                  '--dur': thumbDur,
+                  '--delay': `${t.delay}s`,
+                  marginTop: -(t.size / 2),
                   marginLeft: -(t.size / 2),
-                  width: t.size, height: t.size,
-                  borderRadius: 4, overflow: 'hidden',
-                  border: '1px solid rgba(100,180,255,0.55)',
-                  boxShadow: '0 0 16px rgba(100,180,255,0.28)',
-                  zIndex: 5,
-                  willChange: 'transform, opacity',
-                }}
+                  width: t.size,
+                  height: t.size,
+                } as React.CSSProperties}
               >
-                <img
-                  src={t.src} alt=""
-                  style={{
-                    width: '100%', height: '100%',
-                    objectFit: 'cover', display: 'block',
-                    filter: 'brightness(0.78) saturate(0.7)',
-                  }}
-                />
-                <div style={{
-                  position: 'absolute', inset: 0,
-                  background: 'rgba(20,60,140,0.2)', pointerEvents: 'none',
-                }} />
-              </motion.div>
+                <img src={t.src} alt="" loading="eager" />
+              </div>
             ))}
 
             <NeutronStar phase={phase} />
@@ -401,20 +410,19 @@ export default function HighlightsPage() {
             {/* Skip */}
             <motion.button
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.55 }}
+              animate={{ opacity: 0.5 }}
               whileHover={{ opacity: 1 }}
-              transition={{ delay: 0.6 }}
+              transition={{ delay: 0.5 }}
               onClick={skip}
               style={{
                 position: 'absolute', bottom: 24, right: 20,
                 padding: '7px 18px',
                 background: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(255,255,255,0.2)',
-                borderRadius: 2,
-                color: '#fff',
-                fontFamily: 'var(--font-body)',
-                fontSize: '0.65rem', letterSpacing: '0.18em',
-                textTransform: 'uppercase', cursor: 'pointer', zIndex: 60,
+                borderRadius: 2, color: '#fff',
+                fontFamily: 'var(--font-body)', fontSize: '0.65rem',
+                letterSpacing: '0.18em', textTransform: 'uppercase',
+                cursor: 'pointer', zIndex: 60,
               }}
             >
               Skip →
@@ -422,13 +430,13 @@ export default function HighlightsPage() {
           </motion.div>
         )}
 
-        {/* Gallery reveal */}
+        {/* Gallery */}
         {phase === 'gallery' && (
           <motion.div
             key="gallery"
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.85, ease: 'easeOut' }}
+            transition={{ duration: 0.75, ease: 'easeOut' }}
           >
             <Gallery />
           </motion.div>

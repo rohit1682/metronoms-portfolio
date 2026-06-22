@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 // @ts-ignore — Vite resolves audio assets as URLs
-import track from '../assets/OC/SADDHO NEI AMAR MASTER.mp3';
+import track from '../../assets/OC/SADDHO NEI AMAR MASTER.mp3';
 
 export default function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -10,7 +10,6 @@ export default function AudioPlayer() {
   const [showTooltip, setShowTooltip] = useState(false);
   const [hasInteracted, setHasInteracted] = useState(false);
   const startedRef = useRef(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
   // Always register interaction listeners immediately — whether autoplay succeeds or not.
   // This guarantees the music fires on the very first scroll/click/touch/keypress.

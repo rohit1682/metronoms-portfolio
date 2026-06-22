@@ -4,19 +4,25 @@ import { useInView } from 'react-intersection-observer';
 import { MEMBERS, BRAND } from '../constants';
 import { MEMBER_PHOTOS } from '../constants/images';
 import { MEMBERS_UI } from '../constants/ui';
+import { randomIndex } from '../utils/random';
 
 function MemberCard({ member, index }: { member: { name: string }; index: number }) {
-  const [activePhoto, setActivePhoto] = useState(0);
-  const [hovered, setHovered] = useState(false);
   const photos = MEMBER_PHOTOS[member.name] ?? [];
-  const { ref, inView } = useInView({ threshold: 0.1, triggerOnce: true });
+  // Start on a random photo on every mount so each visit shows a different face
+  const [activePhoto, setActivePhoto] = useState(() => randomIndex(photos.length));
+  const [hovered, setHovered] = useState(false);
+  const { ref, inView } = useInView({
+    threshold: 0.05,
+    triggerOnce: true,
+    rootMargin: '0px 0px -40px 0px',
+  });
 
   return (
     <motion.div
       ref={ref}
-      initial={{ opacity: 0, y: 50 }}
-      animate={inView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.6, delay: index * 0.08 }}
+      initial={{ opacity: 0 }}
+      animate={inView ? { opacity: 1 } : {}}
+      transition={{ duration: 0.45, delay: index * 0.07 }}
       style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
     >
       {/* Main photo */}
@@ -37,6 +43,7 @@ function MemberCard({ member, index }: { member: { name: string }; index: number
             key={activePhoto}
             src={photos[activePhoto] ?? ''}
             alt={member.name}
+            loading="eager"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -186,16 +193,25 @@ export default function MembersPage() {
         </motion.div>
 
         {/* Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))',
-          gap: '24px',
-        }}>
+        <div className="members-grid">
           {MEMBERS.list.map((member, i) => (
             <MemberCard key={member.name} member={member} index={i} />
           ))}
         </div>
       </div>
+
+      <style>{`
+        .members-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+          gap: 24px;
+        }
+        @media (max-width: 480px) {
+          .members-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }

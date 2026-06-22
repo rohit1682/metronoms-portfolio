@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { EXPERIENCE, ORIGINAL } from '../../constants';
 import { EXPERIENCE_UI } from '../../constants/ui';
-import { EXPERIENCE_PHOTO, GROUP_PHOTOS } from '../../constants/images';
+import { GROUP_PHOTOS } from '../../constants/images';
+import { randomItem } from '../../utils/random';
 
 function TimelineCard({
   content,
@@ -135,7 +137,8 @@ export default function Experience() {
   const { ref: achieveRef, inView: achieveInView } = useInView({ threshold: 0.2, triggerOnce: true });
   const { ref: originalRef, inView: originalInView } = useInView({ threshold: 0.2, triggerOnce: true });
 
-  const photo = EXPERIENCE_PHOTO || GROUP_PHOTOS[2] || GROUP_PHOTOS[0];
+  // Random group photo on every mount — so the card looks fresh on each visit
+  const photo = useMemo(() => randomItem(GROUP_PHOTOS) ?? GROUP_PHOTOS[0] ?? '', []);
 
   return (
     <section
@@ -143,6 +146,7 @@ export default function Experience() {
       style={{
         padding: 'clamp(60px, 10vw, 120px) clamp(20px, 5vw, 60px)',
         background: 'linear-gradient(180deg, #0d0d0d 0%, #0a0a0a 100%)',
+        borderTop: '1px solid rgba(139,0,0,0.12)',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -214,17 +218,22 @@ export default function Experience() {
               animate={{
                 boxShadow: [
                   '0 0 10px rgba(196,30,58,0.2)',
-                  '0 0 24px rgba(196,30,58,0.45)',
+                  '0 0 28px rgba(196,30,58,0.5)',
                   '0 0 10px rgba(196,30,58,0.2)',
                 ],
               }}
               transition={{ duration: 2.5, repeat: Infinity, delay: i * 0.5 }}
               style={{
-                padding: '16px 24px',
-                background: 'linear-gradient(135deg, rgba(139,0,0,0.2), rgba(196,30,58,0.1))',
-                border: '1px solid rgba(196,30,58,0.4)',
-                borderRadius: '4px',
+                padding: '16px 20px 16px 16px',
+                background: 'linear-gradient(135deg, rgba(139,0,0,0.18), rgba(196,30,58,0.08))',
+                border: '1px solid rgba(196,30,58,0.35)',
+                borderLeft: '3px solid var(--crimson)',
+                borderRadius: '0 4px 4px 0',
                 maxWidth: '340px',
+                transition: 'background 0.25s ease',
+              }}
+              whileHover={{
+                background: 'linear-gradient(135deg, rgba(139,0,0,0.28), rgba(196,30,58,0.15))',
               }}
             >
               <div style={{
@@ -438,8 +447,12 @@ export default function Experience() {
             <div style={{
               borderRadius: '4px',
               overflow: 'hidden',
-              aspectRatio: '16/9',
+              aspectRatio: '4/3',
               border: '1px solid rgba(139,0,0,0.3)',
+              background: '#0a0a0a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}>
               <img
                 src={photo}
@@ -447,8 +460,8 @@ export default function Experience() {
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover',
-                  filter: 'brightness(0.8) contrast(1.1) saturate(0.9)',
+                  objectFit: 'contain',
+                  filter: 'brightness(0.85) contrast(1.05) saturate(0.9)',
                 }}
                 loading="lazy"
               />

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import logo from '../assets/logo/logo.jpeg';
+import logo from '../../assets/logo/logo.jpeg';
 
 interface LogoSplashProps {
   onComplete: () => void;

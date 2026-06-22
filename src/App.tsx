@@ -3,9 +3,11 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import './App.css';
 
-import Sidebar from './components/Sidebar';
-import LogoSplash from './components/LogoSplash';
-import AudioPlayer from './components/AudioPlayer';
+import Sidebar from './components/layout/Sidebar';
+import LogoSplash from './components/layout/LogoSplash';
+import AudioPlayer from './components/layout/AudioPlayer';
+import ScrollProgressBar from './components/ui/ScrollProgressBar';
+import BookingCTA from './components/ui/BookingCTA';
 
 // Sections
 import Hero from './components/sections/Hero';
@@ -71,6 +73,8 @@ function AppShell() {
       </AnimatePresence>
 
       {splashDone && <AudioPlayer />}
+      {splashDone && <ScrollProgressBar />}
+      {splashDone && <BookingCTA />}
 
       <motion.div
         className="app"
@@ -79,12 +83,18 @@ function AppShell() {
         transition={{ duration: 0.6, ease: 'easeInOut' }}
       >
         <Sidebar onToggle={setSidebarOpen} />
-        <main
-          className={`main-content${sidebarOpen ? ' sidebar-open' : ''}`}
-          style={{ width: '100%' }}
-        >
-          <AnimatedRoutes />
-        </main>
+        {/*
+          Mount routes only after splash completes so Hero's AnimatedText
+          fires from t=0 post-splash instead of during the hidden splash period.
+        */}
+        {splashDone && (
+          <main
+            className={`main-content${sidebarOpen ? ' sidebar-open' : ''}`}
+            style={{ width: '100%' }}
+          >
+            <AnimatedRoutes />
+          </main>
+        )}
       </motion.div>
     </>
   );
