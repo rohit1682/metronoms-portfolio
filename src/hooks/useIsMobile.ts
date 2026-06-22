@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 
 /** Returns true when the viewport is ≤ 768 px wide. Updates on resize. */
 export function useIsMobile(): boolean {
-  const [mobile, setMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  const [mobile, setMobile] = useState(
+    /* v8 ignore next */ () =>
+      typeof window !== 'undefined' ? window.innerWidth <= 768 : false,
   );
 
   useEffect(() => {

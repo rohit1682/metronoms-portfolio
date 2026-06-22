@@ -27,6 +27,16 @@ const KEN_BURNS_CSS = `
       width: 100% !important;
     }
   }
+
+  /* Scroll indicator: hidden on very short viewports to avoid overlap */
+  .hero-scroll-indicator {
+    display: flex;
+  }
+  @media (max-height: 480px) {
+    .hero-scroll-indicator {
+      display: none !important;
+    }
+  }
 `;
 
 export default function Hero() {
@@ -99,10 +109,11 @@ export default function Hero() {
         zIndex: 2,
       }} />
 
-      {/* Content */}
+      {/* Content — paddingBottom reserves space for the scroll indicator so it never overlaps */}
       <div style={{
         position: 'relative', zIndex: 3,
-        textAlign: 'center', padding: '0 24px',
+        textAlign: 'center',
+        padding: 'clamp(32px, 6vh, 60px) 24px clamp(100px, 16vh, 140px)',
         maxWidth: '960px', width: '100%',
       }}>
         {/* Top label */}
@@ -241,13 +252,14 @@ export default function Hero() {
 
       {/* Scroll indicator */}
       <motion.div
+        className="hero-scroll-indicator"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 2.5, duration: 0.6 }}
         style={{
           position: 'absolute', bottom: '32px', left: '50%',
           transform: 'translateX(-50%)', zIndex: 3,
-          display: 'flex', flexDirection: 'column',
+          flexDirection: 'column',
           alignItems: 'center', gap: '8px', cursor: 'pointer',
         }}
         onClick={scrollToAbout}
